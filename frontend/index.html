@@ -1,124 +1,236 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
   <head>
-    <title>Upload file to S3</title>
-    <script src="https://unpkg.com/vue@1.0.28/dist/vue.js"></script>
-    <script src="https://unpkg.com/axios@0.2.1/dist/axios.min.js"></script>
-  </head>
-  <body>
-    <div id="app">
-      <h1>S3 Uploader Test</h1>
-  
-      <div v-if="!image">
-        <h2>Select an image</h2>
-        <input type="file" @change="onFileChange" accept="image/jpeg">
-      </div>
-      <div v-else>
-        <img :src="image" />
-        <button v-if="!uploadURL" @click="removeImage">Remove image</button>
-        <button v-if="!uploadURL" @click="uploadImage">Upload image</button>
-      </div>
-      <h2 v-if="uploadURL">Success! Image uploaded to bucket.</h2>
-    </div>
-  
-    <script>
-      const MAX_IMAGE_SIZE = 1000000
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fireproof Test</title>
+    <script src="https://unpkg.com/@fireproof/core@0.18.0/dist/browser/fireproof.global.js"></script>
+    <script src="https://unpkg.com/@fireproof/aws@0.18.0/dist/browser/index.iife.js
+    "></script>
+    <script type="text/javascript">
+      function todoApp() {
+        const actorTag = Math.random().toString(36).substring(2, 7)
+        const { fireproof, index } = Fireproof
+        const { connect } = FireproofConnect
 
-      /* ENTER YOUR ENDPOINT HERE */
+        // console.log('connect', connect)
 
-      const API_ENDPOINT = '<< ENTER HERE >>' // e.g. https://ab1234ab123.execute-api.us-east-1.amazonaws.com/uploads
+        let dbName
+        let db
+        let cx
 
-      new Vue({
-        el: "#app",
-        data: {
-          image: '',
-          uploadURL: ''
-        },
-        methods: {
-          onFileChange (e) {
-            let files = e.target.files || e.dataTransfer.files
-            if (!files.length) return
-            this.createImage(files[0])
-          },
-          createImage (file) {
-            // var image = new Image()
-            let reader = new FileReader()
-            reader.onload = (e) => {
-              console.log('length: ', e.target.result.includes('data:image/jpeg'))
-              if (!e.target.result.includes('data:image/jpeg')) {
-                return alert('Wrong file type - JPG only.')
-              }
-              if (e.target.result.length > MAX_IMAGE_SIZE) {
-                return alert('Image is loo large.')
-              }
-              this.image = e.target.result
-            }
-            reader.readAsDataURL(file)
-          },
-          removeImage: function (e) {
-            console.log('Remove clicked')
-            this.image = ''
-          },
-          uploadImage: async function (e) {
-            console.log('Upload clicked')
-            // Get the presigned URL
-            const response = await axios({
-              method: 'GET',
-              url: API_ENDPOINT
+        let dbUnsubscribe = false
+
+        function setupDb(name, newDb, newConn) {
+          const input = document.querySelector('#todo')
+          input.disabled = true
+
+          if (dbUnsubscribe) {
+            dbUnsubscribe()
+          }
+          if (newDb) {
+            // console.log('new db', newDb, newConn)
+            name = newDb.name
+            dbName = newDb.name
+            db = newDb
+            cx = newConn
+            const input = document.querySelector('#list')
+            input.value = dbName
+          } else {
+            dbName = name
+            db = fireproof(name, { autoCompact: 100 })
+            cx = connect.awsFree(db)
+            // cx = connect.aws(db,{ uploadurl, downloadurl, websocketurl })
+            cx.ready.then(async () => {
+              const span = document.querySelector('#cxInfo')
+              span.innerText = `📡`
+              span.addEventListener('click', () => {
+                cx.refresh()
+              })
             })
-            console.log('Response: ', response)
-            console.log('Uploading: ', this.image)
-            let binary = atob(this.image.split(',')[1])
-            let array = []
-            for (var i = 0; i < binary.length; i++) {
-              array.push(binary.charCodeAt(i))
+          }
+
+          window.db = db
+          window.cx = cx
+
+          db.changes([], { limit: 1 }).then(changes => {
+            if (changes.clock.length > 0) {
+              input.disabled = false
+            } else {
+              cx.ready.then(async () => {
+                input.disabled = false
+              })
             }
-            let blobData = new Blob([new Uint8Array(array)], {type: 'image/jpeg'})
-            console.log('Uploading to: ', response.uploadURL)
-            const result = await fetch(response.uploadURL, {
-              method: 'PUT',
-              body: blobData
-            })
-            console.log('Result: ', result)
-            // Final URL for the user doesn't need the query string params
-            this.uploadURL = response.uploadURL.split('?')[0]
+          })
+
+          dbUnsubscribe = db.subscribe(redraw)
+          return db
+        }
+
+        let doing
+        const redraw = async () => {
+          if (doing) {
+            return doing
+          }
+          doing = doRedraw().finally(() => (doing = null))
+          return doing
+        }
+        window.redraw = redraw
+
+        let compactor = '🚗'
+        function drawInfo() {
+          document.querySelector('#carLog').innerText =
+            ` ⏰ ${db._crdt.clock.head.length} ${compactor} ${cx.loader.carLog.length} 📩 ${cx.loader.remoteWAL.walState.operations.length}`
+        }
+        const doRedraw = async () => {
+          drawInfo()
+          const result = await db.allDocs()
+          drawInfo()
+          document.querySelector('ul').innerHTML = ''
+          for (const row of result.rows) {
+            // const doc = await db.get(row.id);
+            const doc = row.value
+            const checkbox = document.createElement('input')
+            checkbox.setAttribute('type', 'checkbox')
+            if (doc.completed) {
+              checkbox.setAttribute('checked', true)
+            }
+            checkbox.onchange = async e => {
+              e.target.indeterminate = true
+              const clicks = doc.clicks || 0
+              doc.clicks = clicks + 1
+              doc.completed = !doc.completed
+              await db.put(doc)
+            }
+            const textSpan = document.createElement('span')
+            textSpan.innerText = `${doc.actor}:${doc.clicks || 0} ${doc.task}`
+            const li = document.createElement('li')
+            li.appendChild(checkbox)
+            li.appendChild(textSpan)
+            document.querySelector('ul').appendChild(li)
           }
         }
-      })
+
+        async function initialize() {
+          ps = new URLSearchParams(location.search)
+          const listQ = ps.get('list')
+          setupDb(listQ || 'my-list')
+          const input = document.querySelector('#list')
+          input.value = dbName
+          redraw()
+        }
+
+        async function openDashboard(e) {
+          db.openDashboard()
+        }
+        window.openDashboard = openDashboard
+
+        async function changeList(e) {
+          e.preventDefault()
+          const input = document.querySelector('#list')
+          dbName = input.value
+          history.pushState(null, '', location.pathname + '?list=' + encodeURIComponent(dbName))
+          setupDb(dbName)
+          redraw()
+        }
+        window.changeList = changeList
+
+        async function createTodoClick(e) {
+          e.preventDefault()
+          const input = document.querySelector('#todo')
+          input.disabled = true
+          const ok = await db.put({
+            actor: actorTag,
+            created: Date.now(),
+            task: input.value,
+            completed: false
+          })
+          input.disabled = false
+          input.value = ''
+        }
+        window.createTodoClick = createTodoClick
+
+        let worker
+        async function startWorker() {
+          const button = document.querySelector('#robot')
+          button.innerText = '🦾'
+          const dcs = await db.allDocs()
+          console.log('start worker', dcs.rows.length)
+          // worker = setInterval(async () => {
+          //   dcs.rows.map((r) => db.put({ ...r.value, clicks: (r.value.clicks || 0) + 1, completed: Math.random() > 0.5 }))
+          // }, 5000)
+          goWorker(dcs)
+        }
+        const goWorker = dcs => {
+          const timeout =
+            10 + db._crdt.clock.head.length * (Math.floor(Math.random() * 2000) + 2000)
+          // console.log('go worker', timeout)
+          worker = setTimeout(async () => {
+            await Promise.all(
+              dcs.rows.slice(0, 5).map(r => {
+                r.value.clicks = r.value.clicks || 0
+                r.value.clicks += 1
+                r.value.completed = Math.random() > 0.5
+                db.put({ ...r.value })
+              })
+            )
+            goWorker(dcs)
+          }, timeout)
+        }
+
+        const stopWorker = () => {
+          const button = document.querySelector('#robot')
+          button.innerText = '🤖'
+          console.log('stop worker')
+          clearTimeout(worker)
+        }
+        const toggleWorker = e => {
+          e.preventDefault()
+          if (worker) {
+            stopWorker()
+          } else {
+            startWorker(e)
+          }
+        }
+        window.toggleWorker = toggleWorker
+
+        async function doCompact(e) {
+          e.preventDefault()
+          compactor = '🚕'
+          drawInfo()
+          await db.compact()
+          drawInfo()
+          compactor = '🚗'
+        }
+        window.doCompact = doCompact
+
+        window.onload = initialize
+        window.db = db
+      }
+
+      todoApp()
     </script>
-    <style type="text/css">
-      body {
-        background: #20262E;
-        padding: 20px;
-        font-family: sans-serif;
-      }
-      #app {
-        background: #fff;
-        border-radius: 4px;
-        padding: 20px;
-        transition: all 0.2s;
-        text-align: center;
-      }
-      #logo {
-        width: 100px;
-      }
-      h2 {
-        font-weight: bold;
-        margin-bottom: 15px;
-      }
-      h1, h2 {
-        font-weight: normal;
-        margin-bottom: 15px;
-      }
-      a {
-        color: #42b983;
-      }
-      img {
-        width: 30%;
-        margin: auto;
-        display: block;
-        margin-bottom: 10px;
-      }
-    </style>
+  </head>
+
+  <body>
+    <h1><a href="https://use-fireproof.com/">Fireproof</a> Test App</h1>
+    Database:
+    <input title="Change list" type="text" name="list" id="list" />
+    <button onclick="changeList(event)">Switch</button>
+
+    <p>
+      This version of the Fireprof test app uses AWS S3 as the
+      storage backend. Click the 📡 to refresh the latest data from other clients.
+    </p>
+
+    <button id="robot" onclick="toggleWorker(event)">🤖</button>
+    <span id="carLog" onclick="doCompact(event)"></span>    
+    <span id="cxInfo"></span>
+
+    <h3>Todos</h3>
+    <input title="Create a todo" type="text" name="todo" id="todo" />
+    <button onclick="createTodoClick(event)">Create Todo</button>
+    <ul></ul>
   </body>
 </html>
+

@@ -1,5 +1,7 @@
 # Fireproof S3 bucket adapter
 
+This works with the AWS connector module, you can [see the API code here](https://github.com/fireproof-storage/fireproof/blob/663919901433efb6ef7d876e82af5e1e5a3a3506/packages/connect-aws/src/index.ts#L30)
+
 This uses verified uploads, addressed by content hash identifier.
 
 - User-agent pings a Lambda API with the intended hash identifier and size for the object they are about to upload.

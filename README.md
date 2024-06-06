@@ -75,6 +75,13 @@ The frontend code is saved in the `frontend` subdirectory.
 
 3. We have already provisioned public resources for your testing. Feel free to comment the line 42 inside the HTML file and uncomment line 43 and run the application again now with custom URLs you got from deploying the SAM template
 
+## Adding access control
+
+Read access can be controlled modifying the call to [onconnect](https://github.com/fireproof-storage/valid-cid-s3-bucket/blob/c18650261a4630e8a081c8fb268b7d97af1f1ba2/onconnect/app.ts#L46) to block the subscription to the database.
+
+Write access can be blocked by stopping the messages propagation inside [sendmessage](https://github.com/fireproof-storage/valid-cid-s3-bucket/blob/c18650261a4630e8a081c8fb268b7d97af1f1ba2/sendmessage/app.ts#L23) :
+
+
 ## Next steps
 
 The AWS Compute Blog post at the top of this README file contains additional information about this pattern.

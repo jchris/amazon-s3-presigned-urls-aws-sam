@@ -2,20 +2,21 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: S3 Uploader - sample application
 Parameters:
-  TableName:
+  GlobalPrefix:
     Type: String
-    Default: "subscriberstable"
-    Description: (Required) The name of the new DynamoDB to store connection identifiers for each connected clients. Minimum 3 characters
-    MinLength: 3
-    MaxLength: 50
-    AllowedPattern: ^[A-Za-z_]+$
-    ConstraintDescription: "Required. Can be characters and underscore only. No numbers or special characters allowed."
+    Description: "Global prefix for resource names"
+    Default: "awsfire"
+
+  StageName:
+    Type: String
+    Default: "Prod"
+    Description: "Stage name for the API Gateway deployment"
 
 Resources:
   SubscribersWebSocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: SubscribersWebSocket
+      Name: !Sub "${GlobalPrefix}-websocket"
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
 
@@ -94,8 +95,8 @@ Resources:
   Stage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
-      StageName: Prod
-      Description: Prod Stage
+      StageName: !Ref StageName
+      Description: !Ref StageName
       DeploymentId: !Ref Deployment
       ApiId: !Ref SubscribersWebSocket
 
@@ -113,7 +114,7 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: True
-      TableName: !Ref TableName
+      TableName: !Sub "${GlobalPrefix}-connections"
 
   OnConnectFunction:
     Type: AWS::Serverless::Function
@@ -124,10 +125,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Ref TableName
+          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref TableName
+            TableName: !Sub "${GlobalPrefix}-connections"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -157,10 +158,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Ref TableName
+          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref TableName
+            TableName: !Sub "${GlobalPrefix}-connections"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -189,10 +190,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Ref TableName
+          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref TableName
+            TableName: !Sub "${GlobalPrefix}-connections"
         - Statement:
             - Effect: Allow
               Action:
@@ -221,7 +222,7 @@ Resources:
   MetaStoreTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: metaStore
+      TableName: !Sub "${GlobalPrefix}-metastore"
       AttributeDefinitions:
         - AttributeName: name
           AttributeType: S
@@ -350,6 +351,7 @@ Resources:
               - HEAD
             AllowedOrigins:
               - '*'
+      BucketName: !Sub "${GlobalPrefix}-uploads-${AWS::AccountId}"
 
 ## Take a note of the outputs for deploying the workflow templates in this sample application
 Outputs:

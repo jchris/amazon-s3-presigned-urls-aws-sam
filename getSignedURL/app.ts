@@ -54,6 +54,13 @@ export const handler = async event => {
   })
 }
 
+interface CRDTEntry {
+  data: string;
+  cid: string;
+  parents: string[];
+}
+
+
 const getUploadURL = async function (event) {
   const { queryStringParameters } = event
   const type = queryStringParameters.type
@@ -102,7 +109,7 @@ async function invokelambda(event, tableName, dbname) {
 
   event.body = JSON.stringify({
     action: "sendmessage",
-    data: JSON.stringify({ items }),
+    data: JSON.stringify(items),
   });
 
   event.API_ENDPOINT = process.env.API_ENDPOINT;
@@ -125,9 +132,9 @@ async function metaUploadParams(queryStringParameters, event) {
   const name = queryStringParameters.name
   const httpMethod = event.requestContext.http.method
   if (httpMethod == 'PUT') {
-    const requestBody = JSON.parse(event.body)
+    const requestBody = JSON.parse(event.body) as CRDTEntry[]
     if (requestBody) {
-      const { data, cid, parents } = requestBody
+      const { data, cid, parents } = requestBody[0]
       if (!data || !cid) {
         throw new Error('Missing data or cid from the metadata:' + event.rawQueryString)
       }
@@ -139,7 +146,7 @@ async function metaUploadParams(queryStringParameters, event) {
           Item: {
             name: name,
             cid: cid,
-            data: data
+            data: requestBody[0]
           }
         })
       )

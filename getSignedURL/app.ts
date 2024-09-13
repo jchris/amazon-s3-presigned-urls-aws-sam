@@ -32,7 +32,7 @@ AWS.config.update({ region: process.env.AWS_REGION })
 const client = new DynamoDBClient({})
 const dynamo = DynamoDBDocumentClient.from(client)
 const lambda = new AWS.Lambda()
-const tableName = 'metaStore'
+const tableName = process.env.TABLE_NAME
 const s3 = new AWS.S3({
   signatureVersion: 'v4'
 })

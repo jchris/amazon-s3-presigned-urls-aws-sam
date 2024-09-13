@@ -2,11 +2,6 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: S3 Uploader - sample application
 Parameters:
-  GlobalPrefix:
-    Type: String
-    Description: "Global prefix for resource names"
-    Default: "awsfire"
-
   StageName:
     Type: String
     Default: "Prod"
@@ -16,7 +11,7 @@ Resources:
   SubscribersWebSocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: !Sub "${GlobalPrefix}-websocket"
+      Name: !Sub "${AWS::StackName}-websocket"
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
 
@@ -114,7 +109,7 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: True
-      TableName: !Sub "${GlobalPrefix}-connections"
+      TableName: !Sub "${AWS::StackName}-connections"
 
   OnConnectFunction:
     Type: AWS::Serverless::Function
@@ -125,10 +120,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
+          TABLE_NAME: !Sub "${AWS::StackName}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Sub "${GlobalPrefix}-connections"
+            TableName: !Sub "${AWS::StackName}-connections"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -158,10 +153,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
+          TABLE_NAME: !Sub "${AWS::StackName}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Sub "${GlobalPrefix}-connections"
+            TableName: !Sub "${AWS::StackName}-connections"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -190,10 +185,10 @@ Resources:
       Runtime: nodejs20.x
       Environment:
         Variables:
-          TABLE_NAME: !Sub "${GlobalPrefix}-connections"
+          TABLE_NAME: !Sub "${AWS::StackName}-connections"
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Sub "${GlobalPrefix}-connections"
+            TableName: !Sub "${AWS::StackName}-connections"
         - Statement:
             - Effect: Allow
               Action:
@@ -222,7 +217,7 @@ Resources:
   MetaStoreTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${GlobalPrefix}-metastore"
+      TableName: !Sub "${AWS::StackName}-metastore"
       AttributeDefinitions:
         - AttributeName: name
           AttributeType: S
@@ -351,7 +346,7 @@ Resources:
               - HEAD
             AllowedOrigins:
               - '*'
-      BucketName: !Sub "${GlobalPrefix}-uploads-${AWS::AccountId}"
+      BucketName: !Sub "${AWS::StackName}-uploads-${AWS::AccountId}"
 
 ## Take a note of the outputs for deploying the workflow templates in this sample application
 Outputs:

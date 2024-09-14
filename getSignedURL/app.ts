@@ -27,6 +27,9 @@ import {
 import { InvocationRequest } from 'aws-sdk/clients/lambda'
 
 // @ts-ignore
+const S3_BUCKET = process.env.UploadBucket
+
+// @ts-ignore
 // AWS.config.update({region: 'us-east-1'})
 AWS.config.update({ region: process.env.AWS_REGION })
 const client = new DynamoDBClient({})
@@ -81,6 +84,20 @@ const getUploadURL = async function (event) {
     })
   } else if (type === 'meta') {
     return await metaUploadParams(queryStringParameters, event)
+  } else if (type === 'wal') {
+    s3Params = {
+      Bucket: S3_BUCKET,
+      Key: `wal/${name}.wal`,
+      Expires: URL_EXPIRATION_SECONDS,
+      ContentType: 'application/octet-stream',
+      ACL: 'public-read'
+    }
+    const uploadURL = await s3.getSignedUrlPromise('putObject', s3Params)
+
+    return JSON.stringify({
+      uploadURL: uploadURL,
+      Key: s3Params.Key
+    })
   } else {
     throw new Error('Unsupported upload type: ' + type)
   }
@@ -237,8 +254,7 @@ function carUploadParams(queryStringParameters, event, type) {
   const Key = `${type}/${name}/${cid.toString()}.car`
 
   const s3Params = {
-    // @ts-ignore
-    Bucket: process.env.UploadBucket,
+    Bucket: S3_BUCKET,
     Key,
     Expires: URL_EXPIRATION_SECONDS,
     ContentType: 'application/car',

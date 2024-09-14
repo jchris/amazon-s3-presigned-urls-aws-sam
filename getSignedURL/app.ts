@@ -85,13 +85,9 @@ const getUploadURL = async function (event) {
   } else if (type === 'meta') {
     return await metaUploadParams(queryStringParameters, event)
   } else if (type === 'wal') {
-    s3Params = {
-      Bucket: S3_BUCKET,
-      Key: `wal/${name}.wal`,
-      Expires: URL_EXPIRATION_SECONDS,
-      ContentType: 'application/octet-stream',
-      ACL: 'public-read'
-    }
+
+    s3Params = walUploadParams(queryStringParameters, event)
+    
     const uploadURL = await s3.getSignedUrlPromise('putObject', s3Params)
 
     return JSON.stringify({
@@ -239,6 +235,24 @@ async function metaUploadParams(queryStringParameters, event) {
       body: JSON.stringify({ message: 'Invalid HTTP method' })
     }
   }
+}
+
+function walUploadParams(queryStringParameters, event) {
+  const name = queryStringParameters.name
+  if (!name) {
+    throw new Error('Missing name query parameter: ' + event.rawQueryString)
+  }
+
+  const Key = `wal/${name}.wal`
+
+  const s3Params = {
+    Bucket: S3_BUCKET,
+    Key,
+    Expires: URL_EXPIRATION_SECONDS,
+    ContentType: 'application/octet-stream',
+    ACL: 'public-read'
+  }
+  return s3Params
 }
 
 function carUploadParams(queryStringParameters, event, type) {

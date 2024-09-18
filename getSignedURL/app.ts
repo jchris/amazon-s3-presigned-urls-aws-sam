@@ -159,7 +159,7 @@ async function metaUploadParams(queryStringParameters, event) {
           Item: {
             name: name,
             cid: cid,
-            data: requestBody[0]
+            data: AWS.DynamoDB.Converter.marshall(requestBody[0])  // Marshal the data
           }
         })
       )
@@ -216,9 +216,10 @@ async function metaUploadParams(queryStringParameters, event) {
     // const data = await dynamoDB.scan(params).promise();
     //This means items is an array of objects where each object contains a string key and a value of any type
     //: { [key: string]: any; }[]
+    // console.log('dynamo result',data)
     let items: { [key: string]: any }[] = []
     if (data.Items && data.Items.length > 0) {
-      items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item))
+      items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item.data))
       return {
         status: 200,
         body: JSON.stringify({ items })

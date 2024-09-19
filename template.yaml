@@ -265,17 +265,8 @@ Resources:
           NODE_OPTIONS: --enable-source-maps
           UploadBucket: !Ref S3UploadBucket
           SendMessage: !Ref SendMessageFunction
-          API_ENDPOINT:
-            !Join [
-              "",
-              [
-                !Ref SubscribersWebSocket,
-                ".execute-api.",
-                !Ref "AWS::Region",
-                ".amazonaws.com/",
-                !Ref "Stage",
-              ],
-            ]
+          API_ENDPOINT: !Join ["", [!Ref SubscribersWebSocket, ".execute-api.", !Ref "AWS::Region", ".amazonaws.com/", !Ref "Stage"]]
+          STACK_NAME: !Ref AWS::StackName
       Policies:
         - S3WritePolicy:
             BucketName: !Ref S3UploadBucket

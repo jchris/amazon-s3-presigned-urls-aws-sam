@@ -35,7 +35,10 @@ AWS.config.update({ region: process.env.AWS_REGION })
 const client = new DynamoDBClient({})
 const dynamo = DynamoDBDocumentClient.from(client)
 const lambda = new AWS.Lambda()
-const tableName = process.env.TABLE_NAME
+
+const stackName = process.env.STACK_NAME;
+const tableName = `${stackName}-metastore`;
+
 const s3 = new AWS.S3({
   signatureVersion: 'v4'
 })
@@ -100,7 +103,7 @@ const getUploadURL = async function (event) {
 }
 
 async function invokelambda(event, tableName, dbname) {
-  const command = new QueryCommand({
+  const commandArgs = {
     ExpressionAttributeValues: {
       ":v1": {
         S: dbname,
@@ -113,7 +116,9 @@ async function invokelambda(event, tableName, dbname) {
     KeyConditionExpression: "#nameAttr = :v1",
     ProjectionExpression: "cid, #dataAttr",
     TableName: tableName,
-  });
+  };
+  console.log('QueryCommand Args:', commandArgs);
+  const command = new QueryCommand(commandArgs);
   const data = await dynamo.send(command)
   let items:{ [key: string]: any; }[] = []
   if (data.Items && data.Items.length > 0) {
@@ -126,9 +131,9 @@ async function invokelambda(event, tableName, dbname) {
   });
 
   event.API_ENDPOINT = process.env.API_ENDPOINT;
-  let str = dbname;
-  let extractedName = str.match(/\.([^.]+)\./)[1]
-  event.databasename=extractedName;
+  // let str = dbname;
+  // let extractedName = str.match(/\.([^.]+)\./)[1]
+  event.databasename=dbname;
 
   const params:InvocationRequest = {
     FunctionName: process.env.SendMessage as string,
@@ -145,6 +150,10 @@ async function metaUploadParams(queryStringParameters, event) {
   const name = queryStringParameters.name
   const httpMethod = event.requestContext.http.method
   if (httpMethod == 'PUT') {
+    console.log('Event:', JSON.stringify(event, null, 2));
+    console.log('QueryStringParameters:', JSON.stringify(queryStringParameters, null, 2));
+    console.log('HTTP Method:', httpMethod);
+    console.log('TableName:', tableName);
     const requestBody = JSON.parse(event.body) as CRDTEntry[]
     if (requestBody) {
       const { data, cid, parents } = requestBody[0]
@@ -153,27 +162,27 @@ async function metaUploadParams(queryStringParameters, event) {
       }
 
       //name is the partition key and cid is the sort key for the DynamoDB table
-      await dynamo.send(
-        new PutCommand({
-          TableName: tableName,
-          Item: {
-            name: name,
-            cid: cid,
-            data: AWS.DynamoDB.Converter.marshall(requestBody[0])  // Marshal the data
-          }
-        })
-      )
+      const putCommand = new PutCommand({
+        TableName: tableName,
+        Item: {
+          name: name,
+          cid: cid,
+          data: AWS.DynamoDB.Converter.marshall(requestBody[0])  // Marshal the data
+        }
+      });
+      console.log('PutCommand:', putCommand);
+      await dynamo.send(putCommand);
 
       for (const p of parents) {
-        await dynamo.send(
-          new DeleteCommand({
-            TableName: tableName,
-            Key: {
-              name: name,
-              cid: p
-            }
-          })
-        )
+        const deleteCommand = new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            name: name,
+            cid: p
+          }
+        });
+        console.log('DeleteCommand:', deleteCommand);
+        await dynamo.send(deleteCommand);
       }
 
       try {
@@ -222,12 +231,12 @@ async function metaUploadParams(queryStringParameters, event) {
       items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item.data))
       return {
         status: 200,
-        body: JSON.stringify({ items })
+        body: JSON.stringify( items )
       }
     } else {
       return {
         status: 200,
-        body: JSON.stringify({ items: [] })
+        body: JSON.stringify( [] )
       }
     }
   } else {

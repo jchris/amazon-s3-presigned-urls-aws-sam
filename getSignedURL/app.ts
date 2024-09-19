@@ -51,7 +51,7 @@ export const handler = async event => {
   return await getUploadURL(event).catch(error => {
     console.error('Error:', error)
     return {
-      status: 500,
+      statusCode: 500,
       body: JSON.stringify({
         message: 'Internal Server Error',
         error: error.message
@@ -90,7 +90,7 @@ const getUploadURL = async function (event) {
   } else if (type === 'wal') {
 
     s3Params = walUploadParams(queryStringParameters, event)
-    
+
     const uploadURL = await s3.getSignedUrlPromise('putObject', s3Params)
 
     return JSON.stringify({
@@ -117,10 +117,10 @@ async function invokelambda(event, tableName, dbname) {
     ProjectionExpression: "cid, #dataAttr",
     TableName: tableName,
   };
-  console.log('QueryCommand Args:', commandArgs);
+  console.log('invokelambda QueryCommand Args:', commandArgs);
   const command = new QueryCommand(commandArgs);
   const data = await dynamo.send(command)
-  let items:{ [key: string]: any; }[] = []
+  let items: { [key: string]: any; }[] = []
   if (data.Items && data.Items.length > 0) {
     items = data.Items.map((item) => AWS.DynamoDB.Converter.unmarshall(item));
   }
@@ -133,15 +133,16 @@ async function invokelambda(event, tableName, dbname) {
   event.API_ENDPOINT = process.env.API_ENDPOINT;
   // let str = dbname;
   // let extractedName = str.match(/\.([^.]+)\./)[1]
-  event.databasename=dbname;
+  event.databasename = dbname;
 
-  const params:InvocationRequest = {
+  const params: InvocationRequest = {
     FunctionName: process.env.SendMessage as string,
     InvocationType: "RequestResponse",
     Payload: JSON.stringify(event),
   }
 
-  const returnedresult:any = await lambda.invoke(params).promise();
+  console.log('Invoking Lambda with Params:', params);
+  const returnedresult: any = await lambda.invoke(params).promise();
   const result = JSON.parse(returnedresult.Payload);
   return result;
 }
@@ -185,24 +186,23 @@ async function metaUploadParams(queryStringParameters, event) {
         await dynamo.send(deleteCommand);
       }
 
-      try {
-        const result = await invokelambda(event, tableName, name)
+      void invokelambda(event, tableName, name).then((result) => {
         console.log("This is the response", result)
-      } catch (error) {
+      }).catch((error) => {
         console.log(error, "This is the error when calling other Lambda")
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: "Failed to connected to websocket server" }),
-        };
-      }
+        // return {
+        //   statusCode: 500,
+        //   body: JSON.stringify({ error: "Failed to connected to websocket server" }),
+        // };
+      });
 
       return {
-        status: 201,
+        statusCode: 201,
         body: JSON.stringify({ message: 'Metadata has been added' })
       }
     } else {
       return {
-        status: 400,
+        statusCode: 400,
         body: JSON.stringify({ message: 'JSON Payload data not found!' })
       }
     }
@@ -229,19 +229,20 @@ async function metaUploadParams(queryStringParameters, event) {
     let items: { [key: string]: any }[] = []
     if (data.Items && data.Items.length > 0) {
       items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item.data))
+      console.log('getmeta Items:', items)
       return {
-        status: 200,
-        body: JSON.stringify( items )
+        statusCode: 200,
+        body: JSON.stringify(items)
       }
     } else {
       return {
-        status: 200,
-        body: JSON.stringify( [] )
+        statusCode: 200,
+        body: JSON.stringify([])
       }
     }
   } else {
     return {
-      status: 400,
+      statusCode: 400,
       body: JSON.stringify({ message: 'Invalid HTTP method' })
     }
   }

@@ -186,15 +186,15 @@ async function metaUploadParams(queryStringParameters, event) {
         await dynamo.send(deleteCommand);
       }
 
-      void invokelambda(event, tableName, name).then((result) => {
-        console.log("This is the response", result)
-      }).catch((error) => {
-        console.log(error, "This is the error when calling other Lambda")
-        // return {
-        //   statusCode: 500,
-        //   body: JSON.stringify({ error: "Failed to connected to websocket server" }),
-        // };
-      });
+      // void invokelambda(event, tableName, name).then((result) => {
+      //   console.log("This is the response", result)
+      // }).catch((error) => {
+      //   console.log(error, "This is the error when calling other Lambda")
+      //   // return {
+      //   //   statusCode: 500,
+      //   //   body: JSON.stringify({ error: "Failed to connected to websocket server" }),
+      //   // };
+      // });
 
       return {
         statusCode: 201,

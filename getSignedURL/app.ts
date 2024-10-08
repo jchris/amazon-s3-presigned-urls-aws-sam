@@ -102,50 +102,56 @@ const getUploadURL = async function (event) {
   }
 }
 
-async function invokelambda(event, tableName, dbname) {
-  const commandArgs = {
-    ExpressionAttributeValues: {
-      ":v1": {
-        S: dbname,
-      },
-    },
-    ExpressionAttributeNames: {
-      "#nameAttr": "name",
-      "#dataAttr": "data",
-    },
-    KeyConditionExpression: "#nameAttr = :v1",
-    ProjectionExpression: "cid, #dataAttr",
-    TableName: tableName,
-  };
-  console.log('invokelambda QueryCommand Args:', commandArgs);
-  const command = new QueryCommand(commandArgs);
-  const data = await dynamo.send(command)
-  let items: { [key: string]: any; }[] = []
-  if (data.Items && data.Items.length > 0) {
-    items = data.Items.map((item) => AWS.DynamoDB.Converter.unmarshall(item));
-  }
+// async function invokelambda(event, tableName, dbname) {
+//   const commandArgs = {
+//     ExpressionAttributeValues: {
+//       ":v1": {
+//         S: dbname,
+//       },
+//     },
+//     ExpressionAttributeNames: {
+//       "#nameAttr": "name",
+//       "#dataAttr": "data",
+//     },
+//     KeyConditionExpression: "#nameAttr = :v1",
+//     ProjectionExpression: "cid, #dataAttr",
+//     TableName: tableName,
+//   };
+//   console.log('invokelambda QueryCommand Args:', commandArgs);
+//   const command = new QueryCommand(commandArgs);
+//   const data = await dynamo.send(command)
+//   let items: { [key: string]: any; }[] = []
+  
+//   if (data.Items && data.Items.length > 0) {
+//     items = data.Items.map((item) => {
+//       console.log('Before unmarshall:', item);
+//       const unmarshalledItem = AWS.DynamoDB.Converter.unmarshall(item);
+//       console.log('After unmarshall:', unmarshalledItem);
+//       return unmarshalledItem;
+//     });
+//   }
 
-  event.body = JSON.stringify({
-    action: "sendmessage",
-    data: JSON.stringify(items),
-  });
+//   event.body = JSON.stringify({
+//     action: "sendmessage",
+//     data: JSON.stringify(items),
+//   });
 
-  event.API_ENDPOINT = process.env.API_ENDPOINT;
-  // let str = dbname;
-  // let extractedName = str.match(/\.([^.]+)\./)[1]
-  event.databasename = dbname;
+//   event.API_ENDPOINT = process.env.API_ENDPOINT;
+//   // let str = dbname;
+//   // let extractedName = str.match(/\.([^.]+)\./)[1]
+//   event.databasename = dbname;
 
-  const params: InvocationRequest = {
-    FunctionName: process.env.SendMessage as string,
-    InvocationType: "RequestResponse",
-    Payload: JSON.stringify(event),
-  }
+//   const params: InvocationRequest = {
+//     FunctionName: process.env.SendMessage as string,
+//     InvocationType: "RequestResponse",
+//     Payload: JSON.stringify(event),
+//   }
 
-  console.log('Invoking Lambda with Params:', params);
-  const returnedresult: any = await lambda.invoke(params).promise();
-  const result = JSON.parse(returnedresult.Payload);
-  return result;
-}
+//   console.log('Invoking Lambda with Params:', params);
+//   const returnedresult: any = await lambda.invoke(params).promise();
+//   const result = JSON.parse(returnedresult.Payload);
+//   return result;
+// }
 
 async function metaUploadParams(queryStringParameters, event) {
   const name = queryStringParameters.name
@@ -168,7 +174,7 @@ async function metaUploadParams(queryStringParameters, event) {
         Item: {
           name: name,
           cid: cid,
-          data: AWS.DynamoDB.Converter.marshall(requestBody[0])  // Marshal the data
+          data: JSON.stringify(requestBody[0])
         }
       });
       console.log('PutCommand:', putCommand);
@@ -228,8 +234,13 @@ async function metaUploadParams(queryStringParameters, event) {
     // console.log('dynamo result',data)
     let items: { [key: string]: any }[] = []
     if (data.Items && data.Items.length > 0) {
-      items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item.data))
-      console.log('getmeta Items:', items)
+      items = data.Items.map((item) => {
+        // console.log('Before unmarshall:', item);
+        const dataString = item.data.S;
+        // console.log('Data string:', dataString);
+        return JSON.parse(dataString);
+      });
+      console.log('getmeta Items:', items);
       return {
         statusCode: 200,
         body: JSON.stringify(items)

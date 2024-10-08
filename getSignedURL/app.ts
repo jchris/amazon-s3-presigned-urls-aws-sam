@@ -27,12 +27,18 @@ import {
 import { InvocationRequest } from 'aws-sdk/clients/lambda'
 
 // @ts-ignore
+const S3_BUCKET = process.env.UploadBucket
+
+// @ts-ignore
 // AWS.config.update({region: 'us-east-1'})
 AWS.config.update({ region: process.env.AWS_REGION })
 const client = new DynamoDBClient({})
 const dynamo = DynamoDBDocumentClient.from(client)
 const lambda = new AWS.Lambda()
-const tableName = 'metaStore'
+
+const stackName = process.env.STACK_NAME;
+const tableName = `${stackName}-metastore`;
+
 const s3 = new AWS.S3({
   signatureVersion: 'v4'
 })
@@ -45,7 +51,7 @@ export const handler = async event => {
   return await getUploadURL(event).catch(error => {
     console.error('Error:', error)
     return {
-      status: 500,
+      statusCode: 500,
       body: JSON.stringify({
         message: 'Internal Server Error',
         error: error.message
@@ -53,6 +59,13 @@ export const handler = async event => {
     }
   })
 }
+
+interface CRDTEntry {
+  data: string;
+  cid: string;
+  parents: string[];
+}
+
 
 const getUploadURL = async function (event) {
   const { queryStringParameters } = event
@@ -74,106 +87,128 @@ const getUploadURL = async function (event) {
     })
   } else if (type === 'meta') {
     return await metaUploadParams(queryStringParameters, event)
+  } else if (type === 'wal') {
+
+    s3Params = walUploadParams(queryStringParameters, event)
+
+    const uploadURL = await s3.getSignedUrlPromise('putObject', s3Params)
+
+    return JSON.stringify({
+      uploadURL: uploadURL,
+      Key: s3Params.Key
+    })
   } else {
     throw new Error('Unsupported upload type: ' + type)
   }
 }
 
-async function invokelambda(event, tableName, dbname) {
-  const command = new QueryCommand({
-    ExpressionAttributeValues: {
-      ":v1": {
-        S: dbname,
-      },
-    },
-    ExpressionAttributeNames: {
-      "#nameAttr": "name",
-      "#dataAttr": "data",
-    },
-    KeyConditionExpression: "#nameAttr = :v1",
-    ProjectionExpression: "cid, #dataAttr",
-    TableName: tableName,
-  });
-  const data = await dynamo.send(command)
-  let items:{ [key: string]: any; }[] = []
-  if (data.Items && data.Items.length > 0) {
-    items = data.Items.map((item) => AWS.DynamoDB.Converter.unmarshall(item));
-  }
+// async function invokelambda(event, tableName, dbname) {
+//   const commandArgs = {
+//     ExpressionAttributeValues: {
+//       ":v1": {
+//         S: dbname,
+//       },
+//     },
+//     ExpressionAttributeNames: {
+//       "#nameAttr": "name",
+//       "#dataAttr": "data",
+//     },
+//     KeyConditionExpression: "#nameAttr = :v1",
+//     ProjectionExpression: "cid, #dataAttr",
+//     TableName: tableName,
+//   };
+//   console.log('invokelambda QueryCommand Args:', commandArgs);
+//   const command = new QueryCommand(commandArgs);
+//   const data = await dynamo.send(command)
+//   let items: { [key: string]: any; }[] = []
+  
+//   if (data.Items && data.Items.length > 0) {
+//     items = data.Items.map((item) => {
+//       console.log('Before unmarshall:', item);
+//       const unmarshalledItem = AWS.DynamoDB.Converter.unmarshall(item);
+//       console.log('After unmarshall:', unmarshalledItem);
+//       return unmarshalledItem;
+//     });
+//   }
 
-  event.body = JSON.stringify({
-    action: "sendmessage",
-    data: JSON.stringify({ items }),
-  });
+//   event.body = JSON.stringify({
+//     action: "sendmessage",
+//     data: JSON.stringify(items),
+//   });
 
-  event.API_ENDPOINT = process.env.API_ENDPOINT;
-  let str = dbname;
-  let extractedName = str.match(/\.([^.]+)\./)[1]
-  event.databasename=extractedName;
+//   event.API_ENDPOINT = process.env.API_ENDPOINT;
+//   // let str = dbname;
+//   // let extractedName = str.match(/\.([^.]+)\./)[1]
+//   event.databasename = dbname;
 
-  const params:InvocationRequest = {
-    FunctionName: process.env.SendMessage as string,
-    InvocationType: "RequestResponse",
-    Payload: JSON.stringify(event),
-  }
+//   const params: InvocationRequest = {
+//     FunctionName: process.env.SendMessage as string,
+//     InvocationType: "RequestResponse",
+//     Payload: JSON.stringify(event),
+//   }
 
-  const returnedresult:any = await lambda.invoke(params).promise();
-  const result = JSON.parse(returnedresult.Payload);
-  return result;
-}
+//   console.log('Invoking Lambda with Params:', params);
+//   const returnedresult: any = await lambda.invoke(params).promise();
+//   const result = JSON.parse(returnedresult.Payload);
+//   return result;
+// }
 
 async function metaUploadParams(queryStringParameters, event) {
   const name = queryStringParameters.name
   const httpMethod = event.requestContext.http.method
   if (httpMethod == 'PUT') {
-    const requestBody = JSON.parse(event.body)
+    console.log('Event:', JSON.stringify(event, null, 2));
+    console.log('QueryStringParameters:', JSON.stringify(queryStringParameters, null, 2));
+    console.log('HTTP Method:', httpMethod);
+    console.log('TableName:', tableName);
+    const requestBody = JSON.parse(event.body) as CRDTEntry[]
     if (requestBody) {
-      const { data, cid, parents } = requestBody
+      const { data, cid, parents } = requestBody[0]
       if (!data || !cid) {
         throw new Error('Missing data or cid from the metadata:' + event.rawQueryString)
       }
 
       //name is the partition key and cid is the sort key for the DynamoDB table
-      await dynamo.send(
-        new PutCommand({
-          TableName: tableName,
-          Item: {
-            name: name,
-            cid: cid,
-            data: data
-          }
-        })
-      )
+      const putCommand = new PutCommand({
+        TableName: tableName,
+        Item: {
+          name: name,
+          cid: cid,
+          data: JSON.stringify(requestBody[0])
+        }
+      });
+      console.log('PutCommand:', putCommand);
+      await dynamo.send(putCommand);
 
       for (const p of parents) {
-        await dynamo.send(
-          new DeleteCommand({
-            TableName: tableName,
-            Key: {
-              name: name,
-              cid: p
-            }
-          })
-        )
+        const deleteCommand = new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            name: name,
+            cid: p
+          }
+        });
+        console.log('DeleteCommand:', deleteCommand);
+        await dynamo.send(deleteCommand);
       }
 
-      try {
-        const result = await invokelambda(event, tableName, name)
-        console.log("This is the response", result)
-      } catch (error) {
-        console.log(error, "This is the error when calling other Lambda")
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: "Failed to connected to websocket server" }),
-        };
-      }
+      // void invokelambda(event, tableName, name).then((result) => {
+      //   console.log("This is the response", result)
+      // }).catch((error) => {
+      //   console.log(error, "This is the error when calling other Lambda")
+      //   // return {
+      //   //   statusCode: 500,
+      //   //   body: JSON.stringify({ error: "Failed to connected to websocket server" }),
+      //   // };
+      // });
 
       return {
-        status: 201,
+        statusCode: 201,
         body: JSON.stringify({ message: 'Metadata has been added' })
       }
     } else {
       return {
-        status: 400,
+        statusCode: 400,
         body: JSON.stringify({ message: 'JSON Payload data not found!' })
       }
     }
@@ -196,25 +231,50 @@ async function metaUploadParams(queryStringParameters, event) {
     // const data = await dynamoDB.scan(params).promise();
     //This means items is an array of objects where each object contains a string key and a value of any type
     //: { [key: string]: any; }[]
+    // console.log('dynamo result',data)
     let items: { [key: string]: any }[] = []
     if (data.Items && data.Items.length > 0) {
-      items = data.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item))
+      items = data.Items.map((item) => {
+        // console.log('Before unmarshall:', item);
+        const dataString = item.data.S;
+        // console.log('Data string:', dataString);
+        return JSON.parse(dataString);
+      });
+      console.log('getmeta Items:', items);
       return {
-        status: 200,
-        body: JSON.stringify({ items })
+        statusCode: 200,
+        body: JSON.stringify(items)
       }
     } else {
       return {
-        status: 200,
-        body: JSON.stringify({ items: [] })
+        statusCode: 200,
+        body: JSON.stringify([])
       }
     }
   } else {
     return {
-      status: 400,
+      statusCode: 400,
       body: JSON.stringify({ message: 'Invalid HTTP method' })
     }
   }
+}
+
+function walUploadParams(queryStringParameters, event) {
+  const name = queryStringParameters.name
+  if (!name) {
+    throw new Error('Missing name query parameter: ' + event.rawQueryString)
+  }
+
+  const Key = `wal/${name}.wal`
+
+  const s3Params = {
+    Bucket: S3_BUCKET,
+    Key,
+    Expires: URL_EXPIRATION_SECONDS,
+    ContentType: 'application/octet-stream',
+    ACL: 'public-read'
+  }
+  return s3Params
 }
 
 function carUploadParams(queryStringParameters, event, type) {
@@ -230,8 +290,7 @@ function carUploadParams(queryStringParameters, event, type) {
   const Key = `${type}/${name}/${cid.toString()}.car`
 
   const s3Params = {
-    // @ts-ignore
-    Bucket: process.env.UploadBucket,
+    Bucket: S3_BUCKET,
     Key,
     Expires: URL_EXPIRATION_SECONDS,
     ContentType: 'application/car',

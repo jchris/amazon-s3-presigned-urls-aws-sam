@@ -22,7 +22,6 @@ import {
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-AWS.config.update({ region: process.env.AWS_REGION });
 const client = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(client);
 const tableName = process.env.TABLE_NAME;
@@ -31,7 +30,7 @@ export const handler = async (event) => {
   return await addSubscribers(event).catch((error) => {
     console.error("Error:", error);
     return {
-      status: 500,
+      statusCode: 500,
       body: JSON.stringify({
         message: "Internal Server Error",
         error: error.message,
@@ -41,10 +40,8 @@ export const handler = async (event) => {
 };
 
 async function addSubscribers(event) {
-  // console.log("This is the route key", event.requestContext.routeKey);
   const { queryStringParameters } = event;
   const database = queryStringParameters.database;
-  // console.log("This is the request context", event.requestContext);
   try {
     await dynamo.send(
       new PutCommand({

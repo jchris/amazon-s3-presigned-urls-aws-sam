@@ -28,11 +28,8 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: e.stack };
   }
 
-  // console.log("This is the event object", event);
-
-  const apigwManagementApi = new AWS.ApiGatewayManagementApi({
-    apiVersion: "2018-11-29",
-    endpoint: event.API_ENDPOINT,
+  const apigwManagementApi = new ApiGatewayManagementApiClient({
+    endpoint: event.requestContext.domainName + '/' + event.requestContext.stage
   });
 
   const postData = JSON.parse(event.body).data;
